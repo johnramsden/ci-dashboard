@@ -1,0 +1,37 @@
+{# Templates in this directory are written as dense, unindented lines on
+   purpose: paired with trim_blocks/lstrip_blocks on the Environment in
+   render/__init__.py, this keeps stray whitespace out of the rendered HTML. #}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{{ title }}</title>
+  <link rel="stylesheet" href="https://assets.ubuntu.com/v1/vanilla_framework_version_4.55.0.min.css" />
+  <link rel="stylesheet" href="{{ root }}static/vendor/uplot/uPlot.min.css" />
+  <link rel="stylesheet" href="{{ root }}static/ci-health.css" />
+</head>
+<body>
+  <header id="navigation" class="p-navigation is-dark">
+    <div class="p-navigation__row">
+      <div class="p-navigation__banner">
+        <div class="p-navigation__tagged-logo">
+          <a class="p-navigation__link" href="{{ root }}index.html">
+            <span class="p-navigation__logo-title">{{ site_title }}</span>
+          </a>
+        </div>
+      </div>
+    </div>
+  </header>
+  <main>
+{% block breadcrumbs %}{% endblock %}{% block content %}{% endblock %}  </main>
+  <footer class="p-strip is-shallow">
+    <div class="row">
+      <p class="p-text--small u-text--muted">{{ footer }}</p>
+    </div>
+  </footer>
+  <script src="{{ root }}static/vendor/uplot/uPlot.iife.min.js"></script>
+  <script src="{{ root }}static/ci-health-chart.js"></script>
+  <script src="{{ root }}static/releases-arch.js"></script>
+</body>
+</html>

@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  unit:
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.12"]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Lock file is current
+        run: uv lock --check
+      - name: Unit tests (includes action.yml, run against a local bare repo)
+        run: uv run --frozen python -m unittest discover -s tests -v
+      - name: shellcheck
+        run: shellcheck scripts/*.sh
+      - name: Wheel carries the templates and static assets
+        run: |
+          set -euo pipefail
+          uv build --wheel --out-dir dist
+          python3 -m zipfile -l dist/*.whl | tee /tmp/wheel.txt
+          grep -q 'ci_dashboard/templates/health/repo.html' /tmp/wheel.txt
+          grep -q 'ci_dashboard/static/vendor/uplot/uPlot.iife.min.js' /tmp/wheel.txt
+
+  # The action itself, from this checkout, against this repository's own
+  # Actions history: real API calls, no publishing.
+  action:
+    runs-on: ubuntu-latest
+    # The config below monitors this repository itself, which the job token
+    # can only read with these scopes granted.
+    permissions:
+      contents: read
+      actions: read
+      checks: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Write a config that watches this repository
+        env:
+          REPO: ${{ github.repository }}
+        run: |
+          cat > "$RUNNER_TEMP/selftest.yml" <<YAML
+          site:
+            title: ci-dashboard self-test
+          groups:
+            - name: Self
+              repos:
+                - repo: $REPO
+                  branches: [main]
+                  lookback_days: 7
+          YAML
+      - id: build
+        uses: ./
+        with:
+          config: ${{ runner.temp }}/selftest.yml
+          publish: false
+      - name: Site was built
+        env:
+          SITE: ${{ steps.build.outputs.site-dir }}
+          FAILED: ${{ steps.build.outputs.collect-failed }}
+        run: |
+          set -euo pipefail
+          test "$FAILED" = false
+          test -f "$SITE/index.html"
+          test -f "$SITE/ci-health/index.html"
+          ls "$SITE"/data/*/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: selftest-site
+          path: ${{ steps.build.outputs.site-dir }}
+          include-hidden-files: true

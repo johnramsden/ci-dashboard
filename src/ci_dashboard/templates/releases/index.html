@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% import "_macros.html" as chrome %}
+{% import "releases/_macros.html" as macros %}
+{% block breadcrumbs %}{{ chrome.breadcrumbs(crumbs) }}{% endblock %}
+{% block content %}
+<section class="p-strip is-shallow">
+<div class="row">
+<h1 class="p-heading--2">Releases</h1>
+<p>Every actively published snap and charm revision, and the commit it was built from. Risks read left to right as a promotion pipeline; hover a revision for its version, branch, and provenance.</p>
+{% if error %}{% call chrome.notification() %}The release ledger could not be read: <code>{{ error }}</code>. This page is stale until the next collection.{% endcall %}
+{% elif not sections %}{% call chrome.notification() %}No release data collected yet — <code>ci-dashboard collect-releases</code> has not run.{% endcall %}
+{% endif %}
+{% if bad_default_arch %}{% call chrome.notification() %}The dashboard config sets <code>default_arch: {{ bad_default_arch }}</code>, which no asset publishes to. Every table opens on its own first architecture instead.{% endcall %}
+{% endif %}
+</div>
+</section>
+{% for section in sections %}{% if not section.collapsed %}<section class="p-strip is-shallow u-no-padding--top">
+<div class="row">
+<h2 class="p-heading--3">{{ section.title }} <span class="p-text--small u-text--muted">{{ section.kind }}</span></h2>
+<p class="p-text--small u-text--muted"><a href="https://github.com/{{ section.repo }}">{{ section.repo }}</a></p>
+{{ macros.release_section(section) }}
+</div>
+</section>
+{% endif %}{% endfor %}
+{% for group in collapsed_groups %}<section class="p-strip is-shallow u-no-padding--top">
+<div class="row">
+<h2 class="p-heading--3">{{ group.repo }}</h2>
+<p class="p-text--small u-text--muted">{{ group.count_text }} · <a href="https://github.com/{{ group.repo }}">{{ group.repo }}</a></p>
+{% for section in group.sections %}<details class="ci-release-charm">
+<summary>{{ macros.summary_line(section) }}</summary>
+{{ macros.release_section(section) }}
+</details>
+{% endfor %}
+</div>
+</section>
+{% endfor %}
+{% if sections %}<section class="p-strip is-shallow u-no-padding--top">
+<div class="row">
+<h2 class="p-heading--4">How a commit is established</h2>
+<ul class="p-list--divided">
+<li class="p-list__item"><span class="p-status-label--positive">git tag</span> the publish workflow tagged the commit it built.</li>
+<li class="p-list__item"><span class="p-status-label--positive">git-info.txt</span> the build wrote the commit into the package.</li>
+<li class="p-list__item"><span class="p-status-label--information">version string</span> parsed from the snap's version, which its build stamps with the commit. A convention, not recorded metadata.</li>
+<li class="p-list__item"><strong>unknown</strong> no mechanism resolved this revision. Hover it for why.</li>
+<li class="p-list__item"><strong>·</strong> nothing is published on that risk, for the selected architecture.</li>
+</ul>
+<p class="p-text--small u-text--muted">Risks shown: {% for risk in risks %}<code>{{ risk }}</code>{% if not loop.last %}, {% endif %}{% endfor %}. Rows with no release in the last {{ max_age_days }} days are hidden; the stores never retire a channel. Each table shows one architecture and opens on <code>{{ default_arch }}</code> — revisions are numbered per architecture, and their commits sometimes differ. All set in the dashboard config.</p>
+</div>
+</section>
+{% endif %}
+{% endblock %}

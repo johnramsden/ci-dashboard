@@ -1,0 +1,28 @@
+{# CI-health macros. Shared chrome lives in ../_macros.html. #}
+{% from "_macros.html" import notification %}
+{% macro status_label(value, threshold) %}{% if value < threshold %}<span class="p-status-label--positive">OK</span>{% else %}<span class="p-status-label--negative">Above threshold</span>{% endif %}{% endmacro %}
+
+{% macro job_table(rows) %}<table class="ci-jobs p-table--mobile-card">
+<thead><tr><th>Workflow</th><th>Job</th><th class="u-align--right">Runs</th><th class="u-align--right">Failures</th><th class="u-align--right">Infra</th><th class="u-align--right">Rate</th><th>Trend</th></tr></thead>
+<tbody>
+{% for row in rows %}<tr><td data-heading="Workflow">{{ row.workflow }}</td><td data-heading="Job"><a href="jobs/{{ row.slug }}/index.html">{{ row.job }}</a>{% if row.gate %} <span class="p-status-label--information">Preflight gate</span>{% endif %}</td><td data-heading="Runs" class="u-align--right">{{ row.runs }}</td><td data-heading="Failures" class="u-align--right">{{ row.failures }}</td><td data-heading="Infra" class="u-align--right">{{ row.infra }}</td><td data-heading="Rate" class="u-align--right">{{ row.rate }}</td><td data-heading="Trend">{{ row.trend }}</td></tr>
+{% endfor %}</tbody>
+</table>
+{% endmacro %}
+
+{% macro top_failing(entries) %}{% if entries %}<ol class="p-list--divided">
+{% for e in entries %}<li class="p-list__item"><strong>{{ e.workflow }} / {{ e.job }}</strong> — {{ e.failures }} failures ({{ e.rate }})</li>
+{% endfor %}</ol>
+{% else %}<p>No job failures in this window.</p>
+{% endif %}{% endmacro %}
+
+{# Risks are the columns, so a track's promotion pipeline reads left to right.
+   Row keys and risks both travel with the data: each asset declares them. #}
+
+{% macro trend_chart(payload, caption) %}{% if payload %}<div class="ci-chart">
+<div class="ci-chart__canvas"></div>
+<script type="application/json" class="ci-chart__data">{{ payload|tojson }}</script>
+</div>
+<p class="p-text--small u-text--muted">{{ caption }}</p>
+{% else %}{% call notification() %}Not enough history yet — the chart appears once two daily snapshots exist.{% endcall %}
+{% endif %}{% endmacro %}

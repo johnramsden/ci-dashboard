@@ -1,0 +1,204 @@
+name: CI health dashboard
+description: >-
+  Measure post-merge CI flakiness across a set of GitHub repositories (and,
+  optionally, which commit built each published snap/charm revision), and
+  publish it as a static site on GitHub Pages. Configured by one YAML file.
+author: Canonical
+branding:
+  icon: activity
+  color: orange
+
+inputs:
+  config:
+    description: Path to the dashboard config file, relative to the workspace.
+    required: false
+    default: .github/ci-dashboard.yml
+  token:
+    description: >-
+      Token for the GitHub API reads: Actions runs and jobs (`actions: read`)
+      and check-run annotations (`checks: read`) of every monitored repository,
+      and tags for `git-tag` release provenance (`contents: read`). The job
+      token covers other public repositories; private ones need a GitHub App
+      token with those permissions on each. Publishing does not use this
+      token: it pushes with the credentials actions/checkout stored.
+    required: false
+    default: ${{ github.token }}
+  collect:
+    description: >-
+      Fetch fresh data before rendering. `false` re-renders the data already on
+      the pages branch without any API calls: the way to check a config change.
+    required: false
+    default: "true"
+  publish:
+    description: >-
+      Commit and push the site to `pages-branch`. `false` only builds it into
+      `site-dir` (for pull-request checks, or to upload as an artifact).
+    required: false
+    default: "true"
+  pages-branch:
+    description: >-
+      Branch of the checked-out repository that holds the published site and
+      its data history. Created on the first publish.
+    required: false
+    default: gh-pages
+  site-dir:
+    description: Directory to build the site in. Defaults to one under $RUNNER_TEMP.
+    required: false
+    default: ""
+  fail-on-collect-error:
+    description: >-
+      Fail when any repository or release asset could not be collected. What
+      was collected is still rendered and published first either way.
+    required: false
+    default: "true"
+  commit-message:
+    description: Pages-branch commit message; the UTC date is appended.
+    required: false
+    default: "chore(dashboard): update site"
+
+outputs:
+  site-dir:
+    description: Absolute path of the built site.
+    value: ${{ steps.site.outputs.dir }}
+  changed:
+    description: '"true" when a commit was pushed to the pages branch.'
+    value: ${{ steps.publish.outputs.changed }}
+  collect-failed:
+    description: '"true" when any collection failed (see fail-on-collect-error).'
+    value: ${{ steps.result.outputs.failed }}
+
+runs:
+  using: composite
+  steps:
+    - name: Set up uv
+      uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
+      with:
+        # Read uv settings from this action's project, not the caller's.
+        working-directory: ${{ github.action_path }}
+        enable-cache: "false"
+
+    # Only the dependencies are installed, exactly as pinned and hashed in this
+    # action's uv.lock; the package itself runs from the action's own source.
+    # Nothing is built, so no unpinned build backend is ever fetched or run.
+    # The venv lives outside both the workspace and the action directory.
+    - name: Install ci-dashboard
+      id: install
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        set -euo pipefail
+        venv="$RUNNER_TEMP/ci-dashboard-venv"
+        UV_PROJECT_ENVIRONMENT="$venv" uv sync --project "$ACTION_PATH" \
+          --frozen --no-dev --no-install-project --quiet
+        bin="$venv/bin/ci-dashboard"
+        # bash, not sh: %q may emit bash-only $'...' quoting (a C locale and a
+        # non-ASCII path), which only bash is guaranteed to read back.
+        {
+          echo '#!/usr/bin/env bash'
+          printf 'PYTHONPATH=%q exec %q -m ci_dashboard "$@"\n' \
+            "$ACTION_PATH/src" "$venv/bin/python"
+        } > "$bin"
+        chmod +x "$bin"
+        "$bin" --version
+        echo "bin=$bin" >> "$GITHUB_OUTPUT"
+
+    - name: Validate config
+      shell: bash
+      env:
+        CI_DASHBOARD: ${{ steps.install.outputs.bin }}
+        CONFIG: ${{ inputs.config }}
+      run: '"$CI_DASHBOARD" validate --config "$CONFIG"'
+
+    - name: Prepare the site directory
+      id: site
+      shell: bash
+      env:
+        SITE_DIR: ${{ inputs.site-dir }}
+        PAGES_BRANCH: ${{ inputs.pages-branch }}
+      run: bash "$GITHUB_ACTION_PATH/scripts/pages.sh" prepare
+
+    # A repository failing mid-collection must not discard the others' fresh
+    # snapshots: keep going, publish what succeeded, fail at the end.
+    - name: Collect CI metrics
+      id: collect
+      if: inputs.collect == 'true'
+      shell: bash
+      env:
+        CI_DASHBOARD: ${{ steps.install.outputs.bin }}
+        CONFIG: ${{ inputs.config }}
+        SITE: ${{ steps.site.outputs.dir }}
+        GH_TOKEN: ${{ inputs.token }}
+        PYTHONUNBUFFERED: "1"
+      run: |
+        set -uo pipefail
+        rc=0
+        "$CI_DASHBOARD" collect --config "$CONFIG" --output-dir "$SITE" || rc=$?
+        echo "rc=$rc" >> "$GITHUB_OUTPUT"
+        if [ "$rc" -ne 0 ]; then
+          echo "::warning::ci-dashboard collect exited $rc; publishing the repositories that did succeed."
+        fi
+
+    # Resolves only revisions the ledger on the pages branch has not seen, so
+    # only the first run is slow. A no-op when the config has no `releases:`.
+    - name: Collect release provenance
+      id: releases
+      if: inputs.collect == 'true'
+      shell: bash
+      env:
+        CI_DASHBOARD: ${{ steps.install.outputs.bin }}
+        CONFIG: ${{ inputs.config }}
+        SITE: ${{ steps.site.outputs.dir }}
+        GH_TOKEN: ${{ inputs.token }}
+        PYTHONUNBUFFERED: "1"
+      run: |
+        set -uo pipefail
+        rc=0
+        "$CI_DASHBOARD" collect-releases --config "$CONFIG" --output-dir "$SITE" || rc=$?
+        echo "rc=$rc" >> "$GITHUB_OUTPUT"
+        if [ "$rc" -ne 0 ]; then
+          echo "::warning::ci-dashboard collect-releases exited $rc; publishing the assets that did succeed."
+        fi
+
+    - name: Render site
+      shell: bash
+      env:
+        CI_DASHBOARD: ${{ steps.install.outputs.bin }}
+        CONFIG: ${{ inputs.config }}
+        SITE: ${{ steps.site.outputs.dir }}
+      run: '"$CI_DASHBOARD" render --config "$CONFIG" --output-dir "$SITE"'
+
+    - name: Publish to the pages branch
+      id: publish
+      if: inputs.publish == 'true'
+      shell: bash
+      env:
+        SITE_DIR: ${{ steps.site.outputs.dir }}
+        PAGES_BRANCH: ${{ inputs.pages-branch }}
+        COMMIT_MESSAGE: ${{ inputs.commit-message }}
+      run: bash "$GITHUB_ACTION_PATH/scripts/pages.sh" publish
+
+    - name: Report collection result
+      id: result
+      if: ${{ !cancelled() && steps.site.outcome == 'success' }}
+      shell: bash
+      env:
+        COLLECT_RC: ${{ steps.collect.outputs.rc }}
+        RELEASES_RC: ${{ steps.releases.outputs.rc }}
+        FAIL_ON_ERROR: ${{ inputs.fail-on-collect-error }}
+      run: |
+        set -euo pipefail
+        failed=false
+        # Empty when the step was skipped (collect: false): that is success.
+        if [ "${COLLECT_RC:-0}" != 0 ]; then
+          echo "::error::ci-dashboard collect exited $COLLECT_RC — see the Collect CI metrics step."
+          failed=true
+        fi
+        if [ "${RELEASES_RC:-0}" != 0 ]; then
+          echo "::error::ci-dashboard collect-releases exited $RELEASES_RC — see the Collect release provenance step."
+          failed=true
+        fi
+        echo "failed=$failed" >> "$GITHUB_OUTPUT"
+        if [ "$failed" = true ] && [ "$FAIL_ON_ERROR" = true ]; then
+          exit 1
+        fi

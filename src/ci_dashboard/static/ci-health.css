@@ -1,0 +1,35 @@
+/* Custom styles for the CI health dashboard, layered on Vanilla Framework. */
+
+.p-navigation__logo-title {
+  padding: 0 1rem;
+}
+
+.ci-chart .uplot {
+  max-width: 100%;
+}
+
+/* Long reusable-workflow job names must wrap, not force a wide table. */
+table.ci-jobs td {
+  overflow-wrap: anywhere;
+  vertical-align: top;
+}
+
+/* Per-table architecture selector (Releases page). The <select> is rendered
+   with `hidden` and unhidden by static/releases-arch.js, so a JS-less reader
+   sees the default architecture's table and no inert control. */
+.ci-arch {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+.ci-arch__label {
+  margin: 0;
+  font-size: 0.875rem;
+  color: #666;
+}
+.ci-arch__select {
+  width: auto;
+  min-width: 8rem;
+  margin: 0;
+}

@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% import "_macros.html" as chrome %}
+{% import "health/_macros.html" as macros %}
+{% block breadcrumbs %}{{ chrome.breadcrumbs(crumbs) }}{% endblock %}
+{% block content %}
+{% if not has_snapshots %}<section class="p-strip is-shallow">
+<div class="row">
+<h1 class="p-heading--2">{{ repo }}</h1>
+{% call chrome.notification() %}No data collected yet for this repository.{% endcall %}
+</div>
+</section>
+{% else %}<section class="p-strip is-shallow">
+<div class="row">
+<h1 class="p-heading--2">{{ repo }}</h1>
+<p>Last {{ lookback }} days · generated {{ generated }} · <a href="https://github.com/{{ repo }}/actions">GitHub Actions</a></p>
+</div>
+</section>
+<section class="p-strip is-shallow u-no-padding--top">
+<div class="row">
+<h2 class="p-heading--4">Flaky rate over time</h2>
+{{ macros.trend_chart(chart_payload, chart_caption) -}}
+</div>
+</section>
+{% for b in branches %}<section class="p-strip is-shallow u-no-padding--top">
+<div class="row">
+<h2 class="p-heading--3"><code>{{ b.branch }}</code></h2>
+{% if not b.has_data %}{% call chrome.notification() %}No push/schedule/workflow_dispatch runs on <code>{{ b.branch }}</code> in this window. A low-traffic branch only produces data once a scheduled or dispatched workflow runs on it.{% endcall %}
+{% else %}{% if b.overall is not none %}<p>{{ "%.1f"|format(b.overall) }}% flaky rate {{ macros.status_label(b.overall, threshold) }} — {{ b.failures }} {{ b.failures_word }} / {{ b.runs }} {{ b.runs_word }} (acceptance: &lt; {{ "%g"|format(threshold) }}%)</p>
+{% else %}<p>No job runs outside infrastructure failures in this window.</p>
+{% endif %}{% if b.has_infra %}<p class="p-text--small u-text--muted">Incl. infrastructure failures: {{ "%.1f"|format(b.incl_infra) }}% · {{ "%.1f"|format(b.infra_rate) }}% infrastructure failure rate ({{ b.infra_failures_text }} / {{ b.all_runs_text }}: preflight gates plus <code>Infra</code>-annotated failures, listed on each job's page)</p>
+{% endif %}{{ macros.job_table(b.job_rows) }}
+<h3 class="p-heading--5">Top {{ b.top_n }} failing jobs</h3>
+{{ macros.top_failing(b.top_entries) }}
+{% endif %}
+</div>
+</section>
+{% endfor %}
+{% if excluded %}<section class="p-strip is-shallow u-no-padding--top">
+<div class="row">
+<h2 class="p-heading--4">Excluded jobs</h2>
+<p>Dropped by the dashboard config before any rate on this page is computed — the chart's history included.</p>
+{% if excluded.jobs %}<table class="ci-jobs p-table--mobile-card">
+<thead><tr><th>Workflow</th><th>Job</th><th>Branches</th><th class="u-align--right">Job runs</th><th>Excluded by</th></tr></thead>
+<tbody>
+{% for row in excluded.jobs %}<tr><td data-heading="Workflow">{{ row.workflow }}</td><td data-heading="Job">{{ row.job }}</td><td data-heading="Branches">{% for b in row.branches %}<code>{{ b }}</code>{% if not loop.last %}, {% endif %}{% endfor %}</td><td data-heading="Job runs" class="u-align--right">{{ row.runs }}</td><td data-heading="Excluded by"><code>{{ row.pattern }}</code></td></tr>
+{% endfor %}</tbody>
+</table>
+<p class="p-text--small u-text--muted">{{ excluded.jobs_text }}, {{ excluded.runs_text }} skipped in this window.</p>
+{% endif %}
+{% if excluded.unmatched %}<p class="p-text--small u-text--muted">Matched no job in this window: {% for pattern in excluded.unmatched %}<code>{{ pattern }}</code>{% if not loop.last %}, {% endif %}{% endfor %}.</p>
+{% endif %}
+</div>
+</section>
+{% endif %}
+{% endif %}
+{% endblock %}

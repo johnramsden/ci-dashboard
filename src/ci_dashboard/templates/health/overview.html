@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% import "_macros.html" as chrome %}
+{% import "health/_macros.html" as macros %}
+{% block breadcrumbs %}{{ chrome.breadcrumbs(crumbs) }}{% endblock %}
+{% block content %}<section class="p-strip is-shallow u-no-padding--bottom">
+<div class="row">
+<h1 class="p-heading--2">CI Health</h1>
+<p>Post-merge CI flakiness metrics per repository: only push/schedule/dispatch runs on the monitored branches are counted, so every failure is a false positive or a regression.</p>
+</div>
+</section>
+{% for group in groups %}<section class="p-strip is-shallow">
+<div class="row">
+<h2 class="p-heading--3">{{ group.name }}</h2>
+</div>
+<div class="row">
+{% for card in group.cards %}<div class="col-4">
+<div class="p-card">
+<h3 class="p-card__title"><a href="{{ card.slug }}/index.html">{{ card.repo }}</a></h3>
+{% if card.has_snapshot %}
+<ul class="p-list">{% for row in card.branch_rows %}<li class="p-list__item"><code>{{ row.branch }}</code>: {% if row.rate is not none %}{{ "%.1f"|format(row.rate) }}% ({{ row.failures }} / {{ row.runs }}) {{ macros.status_label(row.rate, card.threshold) }}{% if row.infra_failures %}<br><span class="p-text--small u-text--muted">incl. infra: {{ "%.1f"|format(row.incl_infra) }}%</span>{% endif %}{% else %}no data{% endif %}</li>{% endfor %}</ul>
+<p class="p-text--small u-text--muted">Updated {{ card.updated }}{% if card.excluded_note %} · {{ card.excluded_note }}{% endif %}</p>
+{% else %}<p><span class="p-status-label">No data yet</span></p>
+{% endif %}
+</div>
+</div>
+{% endfor %}</div>
+</section>
+{% endfor %}
+{% endblock %}

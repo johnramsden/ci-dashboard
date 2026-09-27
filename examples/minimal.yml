@@ -1,0 +1,7 @@
+# The smallest useful config: one repository, one branch. Every other key has
+# a default; see the README's configuration reference.
+groups:
+  - name: My team
+    repos:
+      - repo: my-org/my-repo
+        branches: [main]

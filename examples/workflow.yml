@@ -1,0 +1,55 @@
+# Copy to .github/workflows/ci-dashboard.yml in the repository that should host
+# the dashboard, next to a config at .github/ci-dashboard.yml. Then enable
+# Pages once: Settings -> Pages -> Deploy from a branch -> gh-pages, / (root).
+name: CI dashboard
+
+on:
+  schedule:
+    - cron: "17 6 * * *"    # daily, off the top of the hour (UTC)
+  workflow_dispatch:
+  # Re-render (no API calls) when the config changes, so an edited exclude or
+  # threshold shows up without waiting for the next collection...
+  push:
+    branches: [main]
+    paths: [.github/ci-dashboard.yml]
+  # ...and check a proposed config change against the published data.
+  pull_request:
+    paths: [.github/ci-dashboard.yml, .github/workflows/ci-dashboard.yml]
+
+jobs:
+  publish:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write         # push the gh-pages branch
+      actions: read           # only needed if the config monitors this
+      checks: read            # repository itself; harmless otherwise
+    concurrency:
+      group: ci-dashboard-publish
+      cancel-in-progress: false   # serialize; never abandon a half-built site
+    steps:
+      - uses: actions/checkout@v4
+      - uses: johnramsden/ci-dashboard@v1
+        with:
+          # Only the scheduled and manual runs query the APIs; a config push
+          # re-renders the history already on gh-pages.
+          collect: ${{ github.event_name != 'push' }}
+
+  check:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - id: dashboard
+        uses: johnramsden/ci-dashboard@v1
+        with:
+          collect: false
+          publish: false
+      # Optional: attach the rendered preview to the run.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ci-dashboard-preview
+          path: ${{ steps.dashboard.outputs.site-dir }}
+          include-hidden-files: true

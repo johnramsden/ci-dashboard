@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% import "_macros.html" as chrome %}
+{% import "health/_macros.html" as macros %}
+{% block breadcrumbs %}{{ chrome.breadcrumbs(crumbs) }}{% endblock %}
+{% block content %}<section class="p-strip is-shallow">
+<div class="row">
+<h1 class="p-heading--3">{{ workflow }} / {{ job }}</h1>
+<p>{{ repo }} · last {{ lookback }} days · generated {{ generated }}</p>
+{% if is_gate %}{% call chrome.notification() %}Preflight infrastructure gate: every failure counts toward the infrastructure failure rate, not the flaky rate. The rate below is the gate's own failure rate.{% endcall %}
+{% endif %}<table class="ci-jobs p-table--mobile-card">
+<thead><tr><th>Branch</th><th class="u-align--right">Runs</th><th class="u-align--right">Failures</th><th class="u-align--right">Infra</th><th class="u-align--right">Rate</th><th>Trend</th></tr></thead>
+<tbody>
+{% for row in rows %}<tr><td data-heading="Branch"><code>{{ row.branch }}</code></td><td data-heading="Runs" class="u-align--right">{{ row.runs }}</td><td data-heading="Failures" class="u-align--right">{{ row.failures }}</td><td data-heading="Infra" class="u-align--right">{{ row.infra }}</td><td data-heading="Rate" class="u-align--right">{{ row.rate }}</td><td data-heading="Trend">{{ row.trend }}</td></tr>
+{% endfor %}</tbody>
+</table>
+</div>
+</section>
+<section class="p-strip is-shallow u-no-padding--top">
+<div class="row">
+<h2 class="p-heading--4">Failure rate over time</h2>
+{{ macros.trend_chart(chart_payload, chart_caption) -}}
+</div>
+</section>
+<section class="p-strip is-shallow u-no-padding--top">
+<div class="row">
+<h2 class="p-heading--4">Recent failures</h2>
+{% if failures %}<ol class="p-list--divided">
+{% for f in failures %}<li class="p-list__item">{{ f.date }} · <code>{{ f.branch }}</code>{% if f.kind %} · <span class="p-status-label--caution">Infrastructure</span> <code>{{ f.kind }}</code>{% if f.reason %} {{ f.reason }}{% endif %}{% endif %} · <a href="{{ f.url }}">run {{ f.run_id }}</a></li>
+{% endfor %}</ol>
+{% else %}<p>No failures in this window.</p>
+{% endif %}
+</div>
+</section>
+{% endblock %}

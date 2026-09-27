@@ -1,0 +1,45 @@
+{# Releases macros. Shared chrome lives in ../_macros.html. #}
+{% from "_macros.html" import notification %}
+{% macro release_cell(cell) %}{% if not cell %}<span class="u-text--muted" aria-label="not published">·</span>{% else %}<span title="{{ cell.title }}">{{ cell.revision }} · {% if cell.commit %}<a href="{{ cell.commit_url }}"><code>{{ cell.commit }}</code></a>{% else %}<span class="u-text--muted">unknown</span>{% endif %}</span>{% endif %}{% endmacro %}
+
+{% macro release_table(section, table) %}<table class="ci-jobs p-table--mobile-card">
+<thead><tr>{% for heading in section.key_headings %}<th>{{ heading }}</th>{% endfor %}{% for risk in table.risks %}<th>{{ risk }}</th>{% endfor %}</tr></thead>
+<tbody>
+{% for row in table.rows %}<tr>{% for part in row.key %}<td data-heading="{{ section.key_headings[loop.index0] }}">{{ part }}</td>{% endfor %}{% for cell in row.cells %}<td data-heading="{{ table.risks[loop.index0] }}">{{ release_cell(cell) }}</td>{% endfor %}</tr>
+{% endfor %}</tbody>
+</table>
+{% endmacro %}
+
+{% macro release_summary(table) %}{{ table.resolved }} of {{ table.total }} revisions mapped{% if table.provenances %} via{% for p in table.provenances %} <span class="p-status-label--{{ p.label }}">{{ p.name }}</span>{% endfor %}{% endif %}{% if table.hidden %} · {{ table.hidden_text }} hidden, nothing released since {{ table.cutoff }}{% endif %}{% if table.omitted_risks %} · also publishes to {% for risk in table.omitted_risks %}<code>{{ risk }}</code>{% if not loop.last %}, {% endif %}{% endfor %}, not shown ({{ table.omitted_channels_text }}{% if table.omitted_revisions %}, {{ table.omitted_revisions_text }} reachable only there{% endif %}){% endif %}{% endmacro %}
+
+{# The collapsed <summary> carries one line per architecture, toggled by the
+   same JS that toggles the panels, so an expanded charm's headline counts
+   never disagree with the table below it. #}
+{% macro summary_line(section) %}{{ section.title }}{% for table in section.tables %} <span class="ci-arch__summary" data-section="{{ section.slug }}" data-arch="{{ table.arch }}"{% if not loop.first %} hidden{% endif %}>— {{ release_summary(table) }}</span>{% endfor %}{% endmacro %}
+
+{# One <select> per section, one panel per architecture. Every panel is real
+   HTML; static/releases-arch.js only flips `hidden` and reveals the select, so
+   without JavaScript the page still shows the default architecture and never a
+   dead control. Sections with a single architecture get no selector at all. #}
+{% macro arch_selector(section) %}{% if section.arches|length > 1 %}<div class="ci-arch">
+<label class="ci-arch__label" for="arch-{{ section.slug }}">Architecture</label>
+<select class="ci-arch__select" id="arch-{{ section.slug }}" data-section="{{ section.slug }}" hidden>
+{% for arch in section.arches %}<option value="{{ arch }}">{{ arch }}</option>
+{% endfor %}</select>
+</div>
+{% endif %}{% endmacro %}
+
+{% macro release_section(section) %}{% if section.never_collected %}{% call notification() %}Never collected — its store was unreachable. Nothing to show yet.{% endcall %}
+{% elif section.stale_since %}{% call notification() %}Not refreshed on the last collection — showing data from {{ section.stale_since }}.{% endcall %}
+{% endif %}
+{% if section.inactive_arches %}<p class="p-text--small u-text--muted">No active rows on {% for arch in section.inactive_arches %}<code>{{ arch }}</code>{% if not loop.last %}, {% endif %}{% endfor %} — {{ section.inactive_channels_text }} with nothing released since {{ section.cutoff }}.</p>
+{% endif %}
+{% if section.tables %}{{ arch_selector(section) }}
+{% for table in section.tables %}<div class="ci-arch__panel" data-section="{{ section.slug }}" data-arch="{{ table.arch }}"{% if not loop.first %} hidden{% endif %}>
+<p class="p-text--small u-text--muted">{{ release_summary(table) }}</p>
+{% if table.rows %}{{ release_table(section, table) }}
+{% else %}{% call notification() %}Nothing published on {% for risk in section.risks_shown %}<code>{{ risk }}</code>{% if not loop.last %}, {% endif %}{% endfor %} for <code>{{ table.arch }}</code>.{% endcall %}
+{% endif %}</div>
+{% endfor %}
+{% elif not section.never_collected %}{% call notification() %}No channel has been released to since {{ section.cutoff }}.{% endcall %}
+{% endif %}{% endmacro %}

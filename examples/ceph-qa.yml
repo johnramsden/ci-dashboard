@@ -1,0 +1,69 @@
+# ci-dashboard config for ceph-qa: the MicroCeph and Charmed Ceph dashboards.
+# This is the file canonical/ceph-qa keeps at .github/ci-dashboard.yml; every
+# key is documented in the ci-dashboard README.
+#
+# Only push / schedule / workflow_dispatch runs on the monitored branches are
+# counted; pull_request runs are deliberately excluded. Low-traffic branches
+# (e.g. squid) get their signal from scheduled dispatcher workflows in the
+# monitored repositories themselves.
+#
+# Releases: each published snap/charm revision mapped to the commit that built
+# it. Omit the whole block to drop the page.
+
+releases:
+  default_arch: amd64
+  risks: [stable, candidate, edge]
+  max_age_days: 730
+  groups:
+    - repo: canonical/microceph
+      provenance: version-string
+      assets: [microceph]
+    - repo: canonical/charm-microceph
+      provenance: git-tag
+      assets: [microceph]
+    - repo: canonical/ceph-charms
+      provenance: git-info
+      collapsed: true
+      assets:
+        - ceph-dashboard
+        - ceph-fs
+        - ceph-mon
+        - ceph-nfs
+        - ceph-nvme
+        - ceph-osd
+        - ceph-proxy
+        - ceph-radosgw
+        - ceph-rbd-mirror
+
+defaults:
+  lookback_days: 30
+  top_jobs: 5
+  flaky_rate_threshold: 3.0   # percent
+
+site:
+  title: "Ceph QA"
+  description: "Quality-assurance dashboards for Canonical Ceph projects."
+
+groups:
+  - name: MicroCeph
+    repos:
+      - repo: canonical/microceph
+        branches: [main, squid]   # squid data arrives once the upstream
+                                  # scheduled-dispatch workflow lands
+        exclude:
+          - workflow: "Vuln scan (scheduled)"
+        preflight:
+          - workflow: "Tests"
+            job: "Preflight infra gate"
+      - repo: canonical/charm-microceph
+        branches: [main, stable/squid]
+        exclude:
+          - job: "Release to CharmHub"
+          - workflow: "Close inactive issues"
+  - name: Ceph Charms
+    repos:
+      - repo: canonical/ceph-charms
+        branches: [main, stable/squid]   # signal from build-and-test.yml's
+                                         # nightly schedule (main) and the
+                                         # scheduled-branch-tests.yaml
+                                         # dispatcher (stable/squid)
